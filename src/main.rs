@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                              // mutable make sense?
 
     chip_8.run()?;
-    println!("{:?}", chip_8.program_counter);
+    println!("{:?}", chip_8.display);
 
     Ok(())
 }
@@ -35,23 +35,47 @@ struct Chip8Engine {
 
 #[derive(Debug)]
 struct Display {
-    screen: [bool; 64 * 32], // TODO(ben): use constants for these values.
+    screen: [bool; DISPLAY_WIDTH * DISPLAY_HEIGHT], // TODO(ben): use constants for these values.
+    width: usize,
+    height: usize,
 }
 impl Display {
     fn new() -> Self {
         Display {
-            screen: [false; 64 * 32],
+            screen: [false; DISPLAY_WIDTH * DISPLAY_HEIGHT],
+            width: DISPLAY_WIDTH,
+            height: DISPLAY_HEIGHT,
         }
     }
 
-    pub fn get_xy(&self, x: usize, y: usize) -> bool {
-        self.screen[x + y * 64] // TODO(ben): do not segfault. Please.
+    // [
+    //     0,0,0,0,0,
+    //     0,0,0,0,0,
+    //     0,0,0,0,0,
+    //     0,0,0,0,0,
+    //     0,0,0,0,0
+    // ]
+
+    // TODO(ben): where should modulo operation be? In the callsite or in the function?
+    /// write_pixel writes a pixel value at the point x, y, returning the new value of that pixel.
+    /// If that point does not exist in the display, it will return none.
+    fn write_pixel(&mut self, x: usize, y: usize, value: bool) -> Option<bool> {
+        if x >= self.width || y >= self.height {
+            None
+        } else {
+            self.screen[x + y * self.height] = value;
+            self.get_pixel(x, y)
+        }
     }
 
-    // TODO(ben): design wise, does it make sense to return the write-value here?
-    pub fn write_xy(&mut self, x: usize, y: usize, value: bool) -> bool {
-        self.screen[x + y * 64] = value;
-        self.get_xy(x, y)
+    /// get_pixel returns a pixel value at the point x, y. If that point does not exist in the
+    /// display, it will return none.
+    fn get_pixel(&self, x: usize, y: usize) -> Option<bool> {
+        if x >= self.width || y >= self.height {
+            None
+        } else {
+            Some(self.screen[x + y * self.height])
+        }
     }
 }
 
@@ -95,9 +119,13 @@ impl Chip8Engine {
             memory[i + 0x50] = font_byte as u8;
         }
 
+        for (i, byte) in rom.iter().enumerate() {
+            memory[0x200 + i] = *byte;
+        }
+
         Chip8Engine {
             rom: rom.to_vec(),
-            program_counter: 200,
+            program_counter: 0x200,
             memory,
             registers: vec![0; 16],
             index_register: 0,
@@ -110,9 +138,9 @@ impl Chip8Engine {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        self.tick()?;
-        self.tick()?;
-        self.tick()?;
+        for _ in 0..240 {
+            self.tick()?;
+        }
 
         Ok(())
     }
@@ -120,8 +148,13 @@ impl Chip8Engine {
     /// tick executes one operation at a time.
     fn tick(&mut self) -> Result<(), Box<dyn Error>> {
         let code = self.fetch();
-        let instruction = self.decode(code).ok_or("unknown instruction")?;
-        self.execute(instruction);
+        println!("CODE: {:#02x}", code);
+        let instruction = self.decode(code).ok_or_else(|| {
+            println!("OUTPUT: {:?}", self.display.screen);
+
+            "unknown instruction"
+        })?;
+        self.execute(instruction)?;
 
         Ok(())
     }
@@ -130,7 +163,7 @@ impl Chip8Engine {
     fn fetch(&mut self) -> u16 {
         let slice = [
             self.memory[self.program_counter],
-            self.memory[self.program_counter + 2],
+            self.memory[self.program_counter + 1],
         ];
 
         self.program_counter += 2;
@@ -141,8 +174,8 @@ impl Chip8Engine {
     fn decode(&self, code: u16) -> Option<Opcode> {
         // TODO(ben): can decoding fail? Likely, yes. Should
         // error with Result type.
-        match code & 0x1000 {
-            0x0000 => match code & 0x0010 {
+        match code & 0xF000 {
+            0x0000 => match code & 0x00F0 {
                 0x00E0 => Some(create_opcode(code, Instructions::Clear)),
                 _ => None,
             },
@@ -155,7 +188,7 @@ impl Chip8Engine {
         }
     }
 
-    fn execute(&mut self, opcode: Opcode) {
+    fn execute(&mut self, opcode: Opcode) -> Result<(), Box<dyn Error>> {
         match opcode.instruction {
             Instructions::Clear => {
                 for pixel in self.display.iter_mut() {
@@ -168,8 +201,8 @@ impl Chip8Engine {
             Instructions::AddVX => self.registers[opcode.x as usize] += opcode.nn,
             Instructions::SetI => self.index_register = opcode.nnn,
             Instructions::Draw => {
-                let x = self.registers[opcode.x as usize];
-                let y = self.registers[opcode.y as usize];
+                let x = self.registers[opcode.x as usize] as usize % self.display.width;
+                let y = self.registers[opcode.y as usize] as usize % self.display.height;
                 self.registers[0xF] = 0; // flag register
                                          //
                                          // TODO(ben): like what the fuck. Seriously? So much casting! Turn it all into
@@ -185,19 +218,34 @@ impl Chip8Engine {
                 for i in input.iter() {
                     for j in (0..8).rev() {
                         let bit = (i >> j) & 1;
-                        let curr_pixel = self.display.get_xy(x.into(), y.into());
-                        let xor = bit ^ curr_pixel as u8;
-                        let new_pixel =
-                            self.display
-                                .write_xy((x + j + i * 8).into(), y.into(), xor != 0);
 
-                        if new_pixel {
-                            self.registers[0xF] = 1;
+                        let offset: u8 = (i * 8 + j).into();
+                        let x_pos = x + offset as usize;
+                        let y_pos = y;
+
+                        match self.display.get_pixel(x_pos.into(), y_pos.into()) {
+                            Some(curr_pixel) => {
+                                let xor = bit ^ curr_pixel as u8;
+                                match self
+                                    .display
+                                    .write_pixel(x_pos.into(), y_pos.into(), xor != 0)
+                                {
+                                    Some(new_pixel) => {
+                                        if new_pixel {
+                                            self.registers[0xF] = 1;
+                                        }
+                                    }
+                                    None => continue,
+                                }
+                            }
+                            None => continue,
                         }
                     }
                 }
             }
         }
+
+        Ok(())
     }
 }
 

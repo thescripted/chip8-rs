@@ -179,7 +179,7 @@ impl Chip8Engine {
         if x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT {
             None
         } else {
-            self.display[x + y * DISPLAY_HEIGHT] = value;
+            self.display[x + y * DISPLAY_WIDTH] = value;
             self.get_byte_from_display(x, y)
         }
     }
@@ -190,7 +190,7 @@ impl Chip8Engine {
         if x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT {
             None
         } else {
-            Some(self.display[x + y * DISPLAY_HEIGHT])
+            Some(self.display[x + y * DISPLAY_WIDTH])
         }
     }
 }

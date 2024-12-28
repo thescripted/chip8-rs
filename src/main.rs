@@ -144,20 +144,21 @@ impl Chip8Engine {
                 self.registers[0xF] = 0;
 
                 let start = self.index_register as usize;
+
+                // TODO(ben): if you create a function, use `draw_sprite`. This will handle the
+                // loop, setting the flag register, checking for bounds, etc.
                 for i in 0..opcode.n as usize {
                     let raw_byte = self.memory[start + i];
                     let cx = x;
                     let cy = y + i;
+                    let index = cx + cy * DISPLAY_WIDTH;
 
                     let curr = self
-                        .get_byte_from_display(cx, cy)
+                        .display
+                        .get(index)
                         .ok_or("getting byte from display is out of bound")?;
 
-                    let byte_to_write = raw_byte ^ curr;
-                    self.write_byte_to_display(cx, cy, byte_to_write)
-                        .ok_or("writing byte to display is out of bound")?;
-
-                    // Collision.
+                    // Collision Detection.
                     //
                     // A ^ B will turn a bit to zero if and only if
                     // A and B both have a bit that was already. therefore
@@ -165,33 +166,17 @@ impl Chip8Engine {
                     if raw_byte & curr != 0 {
                         self.registers[0xF] = 1;
                     }
+
+                    let byte_to_write = raw_byte ^ curr;
+                    if let Some(v) = self.display.get_mut(index) {
+                        *v = byte_to_write;
+                    }
                 }
             }
             _ => return Err("unknown instruction".into()),
         };
 
         Ok(())
-    }
-
-    /// write_pixel writes a pixel value at the point x, y, returning the new value of that pixel.
-    /// If that point does not exist in the display, it will return none.
-    fn write_byte_to_display(&mut self, x: usize, y: usize, value: u8) -> Option<u8> {
-        if x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT {
-            None
-        } else {
-            self.display[x + y * DISPLAY_WIDTH] = value;
-            self.get_byte_from_display(x, y)
-        }
-    }
-
-    /// get_pixel returns a pixel value at the point x, y. If that point does not exist in the
-    /// display, it will return none.
-    fn get_byte_from_display(&self, x: usize, y: usize) -> Option<u8> {
-        if x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT {
-            None
-        } else {
-            Some(self.display[x + y * DISPLAY_WIDTH])
-        }
     }
 }
 

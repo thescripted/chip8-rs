@@ -1,9 +1,11 @@
 use std::error::Error;
-use std::ops::{Deref, DerefMut};
 
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
-const FONT_SET: [i32; 80] = [
+const DISPLAY_SIZE: usize = DISPLAY_WIDTH * DISPLAY_HEIGHT;
+const MEMORY_SIZE: usize = 2096;
+
+const FONT_SET: [u16; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
     0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -26,69 +28,18 @@ const FONT_SET: [i32; 80] = [
 // arrays once I figure out how to use them properly...
 #[derive(Debug)]
 struct Chip8Engine {
-    rom: Vec<u8>,
-    memory: Vec<u8>,
-    registers: Vec<u8>,
+    // delay_timer: u8,
+    // sound_timer: u8,
+    // keyboard: u16,
+    // stack: Vec<u16>,
+    memory: [u8; MEMORY_SIZE],
+    registers: [u8; 16],
     index_register: u16,
-    program_counter: usize, //TODO(ben): should this be u16?
-    delay_timer: u8,
-    sound_timer: u8,
-    display: Display,
-    keyboard: u16,
-    stack: Vec<u16>,
-}
+    program_counter: u16,
 
-#[derive(Debug)]
-struct Display {
-    screen: [u8; DISPLAY_WIDTH / 8 * DISPLAY_HEIGHT],
-    width: usize,
-    height: usize,
-}
-
-// TODO(ben): Question this. Is this an abstraction or an indirection?
-impl Display {
-    fn new() -> Self {
-        Display {
-            screen: [0x0; DISPLAY_WIDTH / 8 * DISPLAY_HEIGHT],
-            width: DISPLAY_WIDTH / 8,
-            height: DISPLAY_HEIGHT,
-        }
-    }
-    // TODO(ben): where should modulo operation be? In the callsite or in the function?
-    /// write_pixel writes a pixel value at the point x, y, returning the new value of that pixel.
-    /// If that point does not exist in the display, it will return none.
-    fn write_pixel(&mut self, x: usize, y: usize, value: u8) -> Option<u8> {
-        if x >= self.width || y >= self.height {
-            None
-        } else {
-            self.screen[x + y * self.height] = value;
-            self.get_pixel(x, y)
-        }
-    }
-
-    /// get_pixel returns a pixel value at the point x, y. If that point does not exist in the
-    /// display, it will return none.
-    fn get_pixel(&self, x: usize, y: usize) -> Option<u8> {
-        if x >= self.width || y >= self.height {
-            None
-        } else {
-            Some(self.screen[x + y * self.height])
-        }
-    }
-}
-
-impl Deref for Display {
-    type Target = [u8; DISPLAY_WIDTH * DISPLAY_HEIGHT / 8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.screen
-    }
-}
-
-impl DerefMut for Display {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.screen
-    }
+    // TODO(ben): this is a simple approach but can be reduced from
+    // 2kb -> 256bytes with bit-packing. Maybe refactor.
+    display: [u8; DISPLAY_SIZE],
 }
 
 #[derive(Debug)]
@@ -101,29 +52,26 @@ struct Opcode {
 }
 
 impl Chip8Engine {
-    pub fn new(rom_file: &str) -> Result<Self, Box<::std::io::Error>> {
-        let rom = std::fs::read(rom_file).unwrap();
+    pub fn new(rom_file: &str) -> Result<Self, Box<std::io::Error>> {
+        let rom = std::fs::read(rom_file)?;
+
+        let mut memory = [0; MEMORY_SIZE];
         // initialize font_set
-        let mut memory = vec![0; 2096];
         for (i, &font_byte) in FONT_SET.iter().enumerate() {
             memory[i + 0x50] = font_byte as u8;
         }
 
+        // read rom into memory
         for (i, byte) in rom.iter().enumerate() {
             memory[0x200 + i] = *byte;
         }
 
         Ok(Chip8Engine {
-            rom: rom.to_vec(),
             program_counter: 0x200,
             memory,
-            registers: vec![0; 16],
+            registers: [0; 16],
             index_register: 0,
-            delay_timer: 0,
-            sound_timer: 0,
-            display: Display::new(),
-            keyboard: 0,
-            stack: Vec::new(), // TODO(ben): sized vec?
+            display: [0; DISPLAY_SIZE],
         })
     }
 
@@ -142,8 +90,8 @@ impl Chip8Engine {
     fn tick(&mut self) -> Result<(), Box<dyn Error>> {
         let code = {
             let slice = [
-                self.memory[self.program_counter],
-                self.memory[self.program_counter + 1],
+                self.memory[self.program_counter as usize],
+                self.memory[self.program_counter as usize + 1],
             ];
 
             self.program_counter += 2;
@@ -172,7 +120,7 @@ impl Chip8Engine {
 
             // TODO(ben): why cast to usize? any alternatives?
             // 0x1nnn - JP addr
-            0x1000 => self.program_counter = opcode.addr.into(),
+            0x1000 => self.program_counter = opcode.addr,
 
             // 0x6xkk - LD Vx, byte
             0x6000 => self.registers[opcode.x as usize] = opcode.kk,
@@ -194,29 +142,31 @@ impl Chip8Engine {
             // it wraps around to the opposite side of the screen.
             0xD000 => {
                 // TODO(ben): get a hold of your numeric casting.
-                let x = self.registers[opcode.x as usize] % self.display.width as u8;
-                let y = self.registers[opcode.y as usize] % self.display.height as u8;
+                let x = (self.registers[opcode.x as usize] % DISPLAY_WIDTH as u8) as usize;
+                let y = (self.registers[opcode.y as usize] % DISPLAY_HEIGHT as u8) as usize;
 
                 self.registers[0xF] = 0;
 
                 let start = self.index_register as usize;
-                for i in 0..opcode.n {
-                    let read = self.memory[start + i as usize];
-                    let curr_x = x.into();
-                    let curr_y = (y + i) as usize;
-                    let current_pixel = self.display.get_pixel(curr_x, curr_y).unwrap_or(0);
+                for i in 0..opcode.n as usize {
+                    let raw_byte = self.memory[start + i];
+                    let cx = x;
+                    let cy = y + i;
 
-                    let pixel_to_draw = read ^ current_pixel;
-                    self.display
-                        .write_pixel(curr_x, curr_y, pixel_to_draw)
-                        .unwrap_or(0);
+                    let curr = self
+                        .get_byte_from_display(cx, cy)
+                        .ok_or("getting byte from display is out of bound")?;
+
+                    let byte_to_write = raw_byte ^ curr;
+                    self.write_byte_to_display(cx, cy, byte_to_write)
+                        .ok_or("writing byte to display is out of bound")?;
 
                     // Collision.
                     //
                     // A ^ B will turn a bit to zero if and only if
                     // A and B both have a bit that was already. therefore
                     // a collision must have occured if A & B is not zero.
-                    if read & current_pixel != 0 {
+                    if raw_byte & curr != 0 {
                         self.registers[0xF] = 1;
                     }
                 }
@@ -225,6 +175,27 @@ impl Chip8Engine {
         };
 
         Ok(())
+    }
+
+    /// write_pixel writes a pixel value at the point x, y, returning the new value of that pixel.
+    /// If that point does not exist in the display, it will return none.
+    fn write_byte_to_display(&mut self, x: usize, y: usize, value: u8) -> Option<u8> {
+        if x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT {
+            None
+        } else {
+            self.display[x + y * DISPLAY_HEIGHT] = value;
+            self.get_byte_from_display(x, y)
+        }
+    }
+
+    /// get_pixel returns a pixel value at the point x, y. If that point does not exist in the
+    /// display, it will return none.
+    fn get_byte_from_display(&self, x: usize, y: usize) -> Option<u8> {
+        if x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT {
+            None
+        } else {
+            Some(self.display[x + y * DISPLAY_HEIGHT])
+        }
     }
 }
 

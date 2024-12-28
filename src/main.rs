@@ -93,6 +93,7 @@ impl DerefMut for Display {
     }
 }
 
+#[derive(Debug)]
 enum Instructions {
     Clear,
     Jump,
@@ -102,6 +103,7 @@ enum Instructions {
     Draw,
 }
 
+#[derive(Debug)]
 struct Opcode {
     x: u8, //TODO(Ben): this is exploration. Is usize better or u16? u8? boolean?
     y: u8,
@@ -201,47 +203,7 @@ impl Chip8Engine {
             Instructions::AddVX => self.registers[opcode.x as usize] += opcode.nn,
             Instructions::SetI => self.index_register = opcode.nnn,
             Instructions::Draw => {
-                let x = self.registers[opcode.x as usize] as usize % self.display.width;
-                let y = self.registers[opcode.y as usize] as usize % self.display.height;
-                self.registers[0xF] = 0; // flag register
-                                         //
-                                         // TODO(ben): like what the fuck. Seriously? So much casting! Turn it all into
-                                         // usizes. Maybe.
-                let input = &self.memory[(self.index_register as usize)
-                    ..((self.index_register + opcode.n as u16) as usize)];
-
-                // TODO(ben): maybe use bitvec? more clever way to batch/XOR/Check flag for 8 bytes at a time
-                // also... yeah this is messy.
-                //
-                // TODO(ben): get modulo operation down.
-                // TODO(ben): ensure clipping rules are valid. Do not overflow your array.
-                for i in input.iter() {
-                    for j in (0..8).rev() {
-                        let bit = (i >> j) & 1;
-
-                        let offset: u8 = (i * 8 + j).into();
-                        let x_pos = x + offset as usize;
-                        let y_pos = y;
-
-                        match self.display.get_pixel(x_pos.into(), y_pos.into()) {
-                            Some(curr_pixel) => {
-                                let xor = bit ^ curr_pixel as u8;
-                                match self
-                                    .display
-                                    .write_pixel(x_pos.into(), y_pos.into(), xor != 0)
-                                {
-                                    Some(new_pixel) => {
-                                        if new_pixel {
-                                            self.registers[0xF] = 1;
-                                        }
-                                    }
-                                    None => continue,
-                                }
-                            }
-                            None => continue,
-                        }
-                    }
-                }
+                todo!()
             }
         }
 

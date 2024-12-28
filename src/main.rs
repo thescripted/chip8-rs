@@ -24,8 +24,6 @@ const FONT_SET: [u16; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
 
-// TODO(ben): for simplicity, let's use vectors for arrays and later optimize for stack-allocated
-// arrays once I figure out how to use them properly...
 #[derive(Debug)]
 struct Chip8Engine {
     // delay_timer: u8,
@@ -44,7 +42,7 @@ struct Chip8Engine {
 
 #[derive(Debug)]
 struct Opcode {
-    x: u8, //TODO(Ben): this is exploration. Is usize better or u16? u8? boolean?
+    x: u8,
     y: u8,
     n: u8,
     kk: u8,
@@ -118,7 +116,6 @@ impl Chip8Engine {
                 _ => todo!(),
             },
 
-            // TODO(ben): why cast to usize? any alternatives?
             // 0x1nnn - JP addr
             0x1000 => self.program_counter = opcode.addr,
 
@@ -141,7 +138,6 @@ impl Chip8Engine {
             // If the sprite is positioned so part of it is outside the coordinates of the display,
             // it wraps around to the opposite side of the screen.
             0xD000 => {
-                // TODO(ben): get a hold of your numeric casting.
                 let x = (self.registers[opcode.x as usize] % DISPLAY_WIDTH as u8) as usize;
                 let y = (self.registers[opcode.y as usize] % DISPLAY_HEIGHT as u8) as usize;
 

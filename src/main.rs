@@ -174,10 +174,10 @@ impl Chip8Engine {
             // 0x1nnn - JP addr
             0x1000 => self.program_counter = opcode.addr.into(),
 
-            // 0x6xnn - LD Vx, byte
+            // 0x6xkk - LD Vx, byte
             0x6000 => self.registers[opcode.x as usize] = opcode.kk,
 
-            // 0x7xnn - ADD Vx, byte
+            // 0x7xkk - ADD Vx, byte
             0x7000 => self.registers[opcode.x as usize] += opcode.kk,
 
             // 0xAnnn - LD I, addr

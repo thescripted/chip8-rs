@@ -3,7 +3,7 @@ use std::error::Error;
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
 const DISPLAY_SIZE: usize = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-const MEMORY_SIZE: usize = 2096;
+const MEMORY_SIZE: usize = 4096;
 
 const FONT_SET: [u16; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -98,11 +98,11 @@ impl Chip8Engine {
         };
 
         let opcode = Opcode {
-            x: (code & 0x0100 >> 2) as u8,
-            y: (code & 0x0011 >> 1) as u8,
-            n: (code & 0x0001) as u8,
-            kk: (code & 0x0011) as u8,
-            addr: (code & 0x0111) as u16,
+            x: ((code & 0x0F00) >> 8) as u8,
+            y: ((code & 0x00F0) >> 4) as u8,
+            n: (code & 0x000F) as u8,
+            kk: (code & 0x00FF) as u8,
+            addr: (code & 0x0FFF) as u16,
         };
 
         match code & 0xF000 {
@@ -113,11 +113,15 @@ impl Chip8Engine {
                         *pixel = 0x0;
                     }
                 }
-                _ => todo!(),
+                _ => {
+                    todo!()
+                }
             },
 
             // 0x1nnn - JP addr
-            0x1000 => self.program_counter = opcode.addr,
+            0x1000 => {
+                self.program_counter = opcode.addr;
+            }
 
             // 0x6xkk - LD Vx, byte
             0x6000 => self.registers[opcode.x as usize] = opcode.kk,
@@ -126,7 +130,9 @@ impl Chip8Engine {
             0x7000 => self.registers[opcode.x as usize] += opcode.kk,
 
             // 0xAnnn - LD I, addr
-            0xA000 => self.index_register = opcode.addr,
+            0xA000 => {
+                self.index_register = opcode.addr;
+            }
 
             // 0xDxyn - DRW Vx, Vy, nibble
             //
@@ -145,31 +151,27 @@ impl Chip8Engine {
 
                 let start = self.index_register as usize;
 
-                // TODO(ben): if you create a function, use `draw_sprite`. This will handle the
-                // loop, setting the flag register, checking for bounds, etc.
                 for i in 0..opcode.n as usize {
                     let raw_byte = self.memory[start + i];
-                    let cx = x;
-                    let cy = y + i;
-                    let index = cx + cy * DISPLAY_WIDTH;
 
-                    let curr = self
-                        .display
-                        .get(index)
-                        .ok_or("getting byte from display is out of bound")?;
+                    for j in 0..8 {
+                        let curr_pixel = (raw_byte << j & 0x80) >> 7;
+                        let cx = x + j;
+                        let cy = y + i;
+                        let index = cx + cy * DISPLAY_WIDTH;
 
-                    // Collision Detection.
-                    //
-                    // A ^ B will turn a bit to zero if and only if
-                    // A and B both have a bit that was already. therefore
-                    // a collision must have occured if A & B is not zero.
-                    if raw_byte & curr != 0 {
-                        self.registers[0xF] = 1;
-                    }
+                        let display_pixel = self.display.get(index).unwrap_or(&0);
 
-                    let byte_to_write = raw_byte ^ curr;
-                    if let Some(v) = self.display.get_mut(index) {
-                        *v = byte_to_write;
+                        // Collision detection.
+                        if *display_pixel == 1 && curr_pixel == 1 {
+                            self.registers[0xF] = 1;
+                        }
+
+                        if *display_pixel == 0 && curr_pixel == 1 {
+                            if let Some(v) = self.display.get_mut(index) {
+                                *v = 1;
+                            }
+                        }
                     }
                 }
             }
@@ -184,11 +186,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     let file_name = "./src/IBM Logo.ch8";
     let mut chip_8 = Chip8Engine::new(file_name)?;
 
-    for _ in 0..200 {
+    for _ in 0..2000 {
         chip_8.tick()?;
     }
 
-    println!("{:?}", chip_8.display);
+    // draw
+    for y in 0..32 {
+        for x in 0..64 {
+            let index = x + y * 64;
+            let pixel = if chip_8.display[index] == 1 { "*" } else { " " };
+            print!("{}", pixel);
+        }
+        println!();
+    }
 
     Ok(())
 }

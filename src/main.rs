@@ -9,12 +9,22 @@ use std::time::{Duration, Instant};
 mod engine;
 use crate::engine::{Chip8Engine, DISPLAY_HEIGHT, DISPLAY_SIZE, DISPLAY_WIDTH};
 
+use clap::Parser;
+
 const FPS: u32 = 5;
 const DISPLAY_FPS: u32 = 10;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long, short)]
+    file: String,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    let file_name = "./src/IBM Logo.ch8";
-    let rom = std::fs::read(file_name)?;
+    let args = Args::parse();
+    let file_path = args.file;
+    let rom = std::fs::read(file_path)?;
 
     let mut chip_8 = Chip8Engine::new();
     chip_8.load(&rom);

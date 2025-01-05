@@ -194,6 +194,30 @@ mod test {
     #[test]
     fn new() {
         let engine = Chip8Engine::new();
+
         assert_eq!(engine.memory[0x50..0xA0], FONT_SET);
+        assert_eq!(engine.program_counter, 0x200);
+    }
+
+    #[test]
+    fn load() {
+        let mut engine = Chip8Engine::new();
+        let source = [0x00, 0xE0, 0xD3, 0x51];
+        engine.load(&source);
+
+        assert_eq!(engine.memory[0x200..0x204], source);
+    }
+
+    #[test]
+    fn tick() {
+        let mut engine = Chip8Engine::new();
+        let source = [0x00, 0xE0, 0xD3, 0x51];
+        engine.load(&source);
+
+        let _ = engine.tick();
+        assert_eq!(engine.program_counter, 0x202);
+
+        let _ = engine.tick();
+        assert_eq!(engine.program_counter, 0x204);
     }
 }

@@ -5,7 +5,7 @@ pub const DISPLAY_HEIGHT: usize = 32;
 pub const DISPLAY_SIZE: usize = DISPLAY_WIDTH * DISPLAY_HEIGHT;
 const MEMORY_SIZE: usize = 4096;
 
-const FONT_SET: [u16; 80] = [
+const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
     0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -54,7 +54,7 @@ impl Chip8Engine {
         let mut memory = [0; MEMORY_SIZE];
 
         for (i, &font_byte) in FONT_SET.iter().enumerate() {
-            memory[0x50 + i] = font_byte as u8;
+            memory[0x50 + i] = font_byte;
         }
 
         Chip8Engine {
@@ -184,5 +184,16 @@ impl Chip8Engine {
         };
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{Chip8Engine, FONT_SET};
+
+    #[test]
+    fn new() {
+        let engine = Chip8Engine::new();
+        assert_eq!(engine.memory[0x50..0xA0], FONT_SET);
     }
 }

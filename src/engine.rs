@@ -29,7 +29,8 @@ pub struct Chip8Engine {
     // delay_timer: u8,
     // sound_timer: u8,
     // keyboard: u16,
-    // stack: Vec<u16>,
+    stack: Vec<u16>,
+    stack_pointer: u8,
     memory: [u8; MEMORY_SIZE],
     registers: [u8; 16],
     index_register: u16,
@@ -58,6 +59,8 @@ impl Chip8Engine {
         }
 
         Chip8Engine {
+            stack: Vec::new(),
+            stack_pointer: 0,
             program_counter: 0x200,
             memory,
             registers: [0; 16],
@@ -120,6 +123,11 @@ impl Chip8Engine {
                         *pixel = 0x0;
                     }
                 }
+                // 0x00EE - RET
+                0x00EE => {
+                    self.program_counter = *self.stack.last().unwrap_or(&0);
+                    self.stack_pointer -= 1;
+                }
                 _ => {
                     todo!()
                 }
@@ -128,11 +136,46 @@ impl Chip8Engine {
             // 0x1nnn - JP addr
             0x1000 => self.program_counter = opcode.addr,
 
+            // 0x2nnn - CALL addr
+            0x2000 => {
+                self.stack_pointer += 1;
+                self.stack.push(self.program_counter);
+                self.program_counter = opcode.addr;
+            }
+
+            // 0x3xkk - SE Vx, byte
+            0x3000 => {
+                if self.registers[opcode.x as usize] == opcode.kk {
+                    self.program_counter += 2;
+                }
+            }
+
+            // 0x4xkk - SNE Vx, byte
+            0x4000 => {
+                if self.registers[opcode.x as usize] != opcode.kk {
+                    self.program_counter += 2;
+                }
+            }
+
+            // 0x5xy0 - SE Vx, Vy
+            0x5000 => {
+                if self.registers[opcode.x as usize] == self.registers[opcode.y as usize] {
+                    self.program_counter += 2;
+                }
+            }
+
             // 0x6xkk - LD Vx, byte
             0x6000 => self.registers[opcode.x as usize] = opcode.kk,
 
             // 0x7xkk - ADD Vx, byte
             0x7000 => self.registers[opcode.x as usize] += opcode.kk,
+
+            // 0x9xy0 - SNE Vx, Vy
+            0x9000 => {
+                if self.registers[opcode.x as usize] != self.registers[opcode.y as usize] {
+                    self.program_counter += 2;
+                }
+            }
 
             // 0xAnnn - LD I, addr
             0xA000 => {

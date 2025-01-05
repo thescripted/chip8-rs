@@ -14,11 +14,10 @@ const DISPLAY_FPS: u32 = 10;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let file_name = "./src/IBM Logo.ch8";
-    // TODO(ben): While passing in a file name alone is very nice, we may want to pass in a
-    // "reader" of some sort. That can be a reader to a file name, a in-place string, or something
-    // along those lines.
+    let rom = std::fs::read(file_name)?;
+
     let mut chip_8 = Chip8Engine::new();
-    chip_8.load(file_name)?;
+    chip_8.load(&rom);
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -56,16 +55,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Event::KeyDown {
                     keycode: Some(Keycode::Q),
                     ..
-                } => todo!("build this with chip_8.press()???"),
+                } => todo!("build this with chip_8.press()"),
                 _ => {}
             }
         }
 
         // Draw the Display at 60Hz
-        // TODO(ben): refactor. I believe it's correct to leave this "draw" event within the main
-        // loop (a.k.a., do not add a "chip_8.draw()". It should not be part of the engine.
-        // Instead, we can read the Engine Display at any time and draw what that should look like
-        // when we would like.
         if last_time.elapsed() >= display_interval {
             let mut pixels: [u8; DISPLAY_SIZE * 4] = [0; DISPLAY_SIZE * 4];
             let white = 0xFFFFFFFF_u32.to_be_bytes();

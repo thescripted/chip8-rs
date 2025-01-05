@@ -66,13 +66,13 @@ impl Chip8Engine {
         }
     }
 
-    pub fn load(&mut self, rom_file: &str) -> Result<(), Box<std::io::Error>> {
-        let rom = std::fs::read(rom_file)?;
-
-        for (i, byte) in rom.iter().enumerate() {
+    /// loads a ROM into the CHIP-8 Engine.
+    /// for now, we don't do any sanity checks here. I don't know what sanity checks we could do to
+    /// ensure that what you provided is something that the Engine can actually run.
+    pub fn load(&mut self, source: &[u8]) {
+        for (i, byte) in source.iter().enumerate() {
             self.memory[0x200 + i] = *byte;
         }
-        Ok(())
     }
 
     // Ideally, I want this to be the main operation. But this might be harder to hook into when

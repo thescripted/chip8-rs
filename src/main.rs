@@ -11,7 +11,7 @@ use crate::engine::{Chip8Engine, DISPLAY_HEIGHT, DISPLAY_SIZE, DISPLAY_WIDTH};
 
 use clap::Parser;
 
-const FPS: u32 = 500;
+const CLOCK: u32 = 500; // Hz
 const DISPLAY_FPS: u32 = 60;
 
 #[derive(Parser, Debug)]
@@ -93,9 +93,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         chip_8.tick()?;
 
-        // Run the Emulator at 500Ticks/Second. For Now.
-        // should I be doing this?
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / FPS));
+        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / CLOCK));
     }
     Ok(())
 }

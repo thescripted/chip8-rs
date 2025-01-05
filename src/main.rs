@@ -4,72 +4,45 @@ extern crate sdl2;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-const SCREEN_WIDTH: u32 = 640;
-const SCREEN_HEIGHT: u32 = 320;
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
 const DISPLAY_SIZE: usize = DISPLAY_WIDTH * DISPLAY_HEIGHT;
 const MEMORY_SIZE: usize = 4096;
+const FPS: u32 = 5;
+const DISPLAY_FPS: u32 = 10;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let file_name = "./src/IBM Logo.ch8";
     let mut chip_8 = Chip8Engine::new(file_name)?;
 
-    for _ in 0..2000 {
-        chip_8.tick()?;
-    }
-
-    let mut pixels: [u8; DISPLAY_SIZE * 4] = [0; DISPLAY_SIZE * 4];
-    let white = 0x000000FF_u32.to_be_bytes();
-    let black = 0xFFFFFFFF_u32.to_be_bytes();
-    for (i, v) in chip_8.display.iter().enumerate().step_by(4) {
-        if *v == 0 {
-            pixels[i..i + 4].copy_from_slice(&white);
-        } else {
-            pixels[i..i + 4].copy_from_slice(&black);
-        }
-    }
-
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
     let window = video_subsystem
-        .window("rust-sdl2 demo", 640, 320)
+        .window("CHIP-8", 640, 320)
         .position_centered()
         .build()
         .unwrap();
 
     let mut canvas = window.into_canvas().build().unwrap();
-    canvas.set_draw_color(Color::RGB(0, 0, 0));
-    canvas.clear();
-    canvas.present();
 
-    let binding = canvas.texture_creator();
-    let mut texture = binding
-        .create_texture(
-            Some(sdl2::pixels::PixelFormatEnum::RGBA8888),
-            sdl2::render::TextureAccess::Streaming,
-            SCREEN_WIDTH,
-            SCREEN_HEIGHT,
+    let texture_creator = canvas.texture_creator();
+    let mut texture = texture_creator
+        .create_texture_streaming(
+            sdl2::pixels::PixelFormatEnum::RGBA8888,
+            DISPLAY_WIDTH as u32,
+            DISPLAY_HEIGHT as u32,
         )
         .unwrap();
 
-    match texture.update(None, &pixels, DISPLAY_WIDTH) {
-        Ok(_) => {
-            println!("I can somewhat write Rust code.")
-        }
-        Err(e) => {
-            println!("Nevermind I don't know what I'm doing: {}", e);
-        }
-    };
-
-    canvas.present();
     let mut event_pump = sdl_context.event_pump().unwrap();
+
+    let display_interval = Duration::from_secs_f64((1 / DISPLAY_FPS).into());
+    let mut last_time = Instant::now();
+
     'running: loop {
-        canvas.clear();
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -77,14 +50,45 @@ fn main() -> Result<(), Box<dyn Error>> {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => break 'running,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Q),
+                    ..
+                } => todo!("build this with chip_8.press()???"),
                 _ => {}
             }
         }
 
-        canvas.present();
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-    }
+        // Draw the Display at 60Hz
+        // TODO(ben): refactor.
+        if last_time.elapsed() >= display_interval {
+            let mut pixels: [u8; DISPLAY_SIZE * 4] = [0; DISPLAY_SIZE * 4];
+            let white = 0xFFFFFFFF_u32.to_be_bytes();
+            let black = 0x00000000_u32.to_be_bytes();
 
+            for (i, &pixel) in chip_8.display.iter().enumerate() {
+                let offset = i * 4;
+                if pixel == 0 {
+                    pixels[offset..offset + 4].copy_from_slice(&black);
+                } else {
+                    pixels[offset..offset + 4].copy_from_slice(&white);
+                }
+            }
+
+            texture.update(None, &pixels, DISPLAY_WIDTH * 4).unwrap();
+            canvas.clear();
+            canvas.copy(&texture, None, None).unwrap();
+            canvas.present();
+
+            // Reset timer at the end of the loop.
+            last_time = Instant::now();
+        }
+
+        chip_8.tick()?;
+
+        // Run the Emulator at 500Ticks/Second. For Now.
+        // should I be doing this?
+        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / FPS));
+    }
     Ok(())
 }
 
@@ -134,17 +138,17 @@ struct Opcode {
 
 impl Chip8Engine {
     pub fn new(rom_file: &str) -> Result<Self, Box<std::io::Error>> {
-        let rom = std::fs::read(rom_file)?;
-
         let mut memory = [0; MEMORY_SIZE];
-        // initialize font_set
-        for (i, &font_byte) in FONT_SET.iter().enumerate() {
-            memory[i + 0x50] = font_byte as u8;
-        }
 
+        let rom = std::fs::read(rom_file)?;
         // read rom into memory
         for (i, byte) in rom.iter().enumerate() {
             memory[0x200 + i] = *byte;
+        }
+
+        // initialize font_set
+        for (i, &font_byte) in FONT_SET.iter().enumerate() {
+            memory[0x50 + i] = font_byte as u8;
         }
 
         Ok(Chip8Engine {

@@ -29,27 +29,24 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut chip_8 = Chip8Engine::new();
     chip_8.load(&rom);
 
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
 
     let window = video_subsystem
         .window("CHIP-8", 640, 320)
         .position_centered()
-        .build()
-        .unwrap();
+        .build()?;
 
-    let mut canvas = window.into_canvas().build().unwrap();
+    let mut canvas = window.into_canvas().build()?;
 
     let texture_creator = canvas.texture_creator();
-    let mut texture = texture_creator
-        .create_texture_streaming(
-            sdl2::pixels::PixelFormatEnum::RGBA8888,
-            DISPLAY_WIDTH as u32,
-            DISPLAY_HEIGHT as u32,
-        )
-        .unwrap();
+    let mut texture = texture_creator.create_texture_streaming(
+        sdl2::pixels::PixelFormatEnum::RGBA8888,
+        DISPLAY_WIDTH as u32,
+        DISPLAY_HEIGHT as u32,
+    )?;
 
-    let mut event_pump = sdl_context.event_pump().unwrap();
+    let mut event_pump = sdl_context.event_pump()?;
 
     let display_interval = Duration::from_secs_f64((1 / DISPLAY_FPS).into());
     let mut last_time = Instant::now();
@@ -85,9 +82,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
 
-            texture.update(None, &pixels, DISPLAY_WIDTH * 4).unwrap();
+            texture.update(None, &pixels, DISPLAY_WIDTH * 4)?;
             canvas.clear();
-            canvas.copy(&texture, None, None).unwrap();
+            canvas.copy(&texture, None, None)?;
             canvas.present();
 
             // Reset timer at the end of the loop.

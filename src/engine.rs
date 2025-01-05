@@ -1,3 +1,4 @@
+use rand::Rng;
 use std::error::Error;
 
 pub const DISPLAY_WIDTH: usize = 64;
@@ -96,6 +97,7 @@ impl Chip8Engine {
     // This is public for now, due to development. We'll see if I want to make this private down
     // the road.
     pub fn tick(&mut self) -> Result<(), Box<dyn Error>> {
+        let mut rng = rand::thread_rng();
         let code = {
             let slice = [
                 self.memory[self.program_counter as usize],
@@ -128,9 +130,7 @@ impl Chip8Engine {
                     self.program_counter = *self.stack.last().unwrap_or(&0);
                     self.stack_pointer -= 1;
                 }
-                _ => {
-                    todo!()
-                }
+                _ => unimplemented!("unknown instruction"),
             },
 
             // 0x1nnn - JP addr
@@ -170,6 +170,28 @@ impl Chip8Engine {
             // 0x7xkk - ADD Vx, byte
             0x7000 => self.registers[opcode.x as usize] += opcode.kk,
 
+            0x8000 => match code & 0xF00F {
+                // 8xy0 - LD Vx, Vy
+                0x8000 => todo!(),
+                // 8xy1 - OR Vx, Vy
+                0x8001 => todo!(),
+                // 8xy2 - AND Vx, Vy
+                0x8002 => todo!(),
+                // 8xy3 - XOR Vx, Vy
+                0x8003 => todo!(),
+                // 8xy4 - ADD Vx, Vy
+                0x8004 => todo!(),
+                // 8xy5 - SUB Vx, Vy
+                0x8005 => todo!(),
+                // 8xy6 - SHR Vx {, Vy}
+                0x8006 => todo!(),
+                // 8xy7 - SUBN Vx, Vy
+                0x8007 => todo!(),
+                // 8xyE - SHL Vx {, Vy}
+                0x800E => todo!(),
+                _ => unimplemented!("unknown instruction"),
+            },
+
             // 0x9xy0 - SNE Vx, Vy
             0x9000 => {
                 if self.registers[opcode.x as usize] != self.registers[opcode.y as usize] {
@@ -180,6 +202,23 @@ impl Chip8Engine {
             // 0xAnnn - LD I, addr
             0xA000 => {
                 self.index_register = opcode.addr;
+            }
+
+            // Bnnn - JP V0, addr
+            //
+            // **AMBIGIOUS INSTRUCTION**.
+            //
+            // COSMAC VIP reads 0xBNNN
+            // CHIP-48 and SUPER-CHIP reads 0xBXNN
+            // Later, I'll add a flag to control this quirk.
+            0xB000 => {
+                self.program_counter = opcode.addr + self.registers[0] as u16;
+            }
+
+            // Cxkk - RND Vx, byte
+            0xC000 => {
+                let random_num: u8 = rng.gen_range(0..=255);
+                self.registers[opcode.x as usize] = random_num & opcode.kk;
             }
 
             // 0xDxyn - DRW Vx, Vy, nibble
@@ -223,7 +262,35 @@ impl Chip8Engine {
                     }
                 }
             }
-            _ => return Err("unknown instruction".into()),
+            0xE000 => match code & 0xF0FF {
+                // Ex9E - SKP Vx
+                0xE09E => todo!(),
+                // ExA1 - SKNP Vx
+                0xE0A1 => todo!(),
+                _ => unimplemented!("unknown instruction"),
+            },
+            0xF000 => match code & 0xF0FF {
+                // Fx07 - LD Vx, DT
+                0xF007 => todo!(),
+                // Fx0A - LD Vx, K
+                0xF00A => todo!(),
+                // Fx15 - LD DT, Vx
+                0xF015 => todo!(),
+                // Fx18 - LD ST, Vx
+                0xF018 => todo!(),
+                // Fx1E - ADD I, Vx
+                0xF01E => todo!(),
+                // Fx29 - LD F, Vx
+                0xF029 => todo!(),
+                // Fx33 - LD B, Vx
+                0xF033 => todo!(),
+                // Fx55 - LD [I], Vx
+                0xF055 => todo!(),
+                // Fx65 - LD Vx, [I]
+                0xF065 => todo!(),
+                _ => unimplemented!(),
+            },
+            _ => unimplemented!("unknown instruction"),
         };
 
         Ok(())

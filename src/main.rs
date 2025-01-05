@@ -11,8 +11,8 @@ use crate::engine::{Chip8Engine, DISPLAY_HEIGHT, DISPLAY_SIZE, DISPLAY_WIDTH};
 
 use clap::Parser;
 
-const FPS: u32 = 5;
-const DISPLAY_FPS: u32 = 10;
+const FPS: u32 = 500;
+const DISPLAY_FPS: u32 = 60;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

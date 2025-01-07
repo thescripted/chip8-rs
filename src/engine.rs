@@ -330,17 +330,22 @@ impl Chip8Engine {
             },
             0xF000 => match code & 0xF0FF {
                 // Fx07 - LD Vx, DT
-                0xF007 => todo!(),
+                0xF007 => todo!(), // TIMER
                 // Fx0A - LD Vx, K
-                0xF00A => todo!(),
+                0xF00A => todo!(), // GET KEY
                 // Fx15 - LD DT, Vx
-                0xF015 => todo!(),
+                0xF015 => todo!(), // TIMER
                 // Fx18 - LD ST, Vx
-                0xF018 => todo!(),
+                0xF018 => todo!(), // TIMER
                 // Fx1E - ADD I, Vx
-                0xF01E => todo!(),
+                //
+                // SEMI-AMBIGUOUS INSTRUCTION: Amiga interpreter "overflows" from 0xFFF to0x1000.
+                // Maybe check for this. If you care.
+                0xF01E => {
+                    self.index_register += self.registers[opcode.x as usize] as u16;
+                }
                 // Fx29 - LD F, Vx
-                0xF029 => todo!(),
+                0xF029 => todo!(), // FONT CHARACTER
                 // Fx33 - LD B, Vx
                 0xF033 => todo!(),
                 // Fx55 - LD [I], Vx

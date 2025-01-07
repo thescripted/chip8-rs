@@ -97,6 +97,8 @@ impl Chip8Engine {
     // Tick handles the fetch/decode/execute loop for a single operation.
     // This is public for now, due to development. We'll see if I want to make this private down
     // the road.
+    //
+    // TODO(ben): resolve ambiguity. Some are using COSMAC-VIP and others are using common sense.
     pub fn tick(&mut self) -> Result<(), Box<dyn Error>> {
         println!("pc: {}", self.program_counter);
         let mut rng = rand::thread_rng();
@@ -345,13 +347,32 @@ impl Chip8Engine {
                     self.index_register += self.registers[opcode.x as usize] as u16;
                 }
                 // Fx29 - LD F, Vx
-                0xF029 => todo!(), // FONT CHARACTER
+                0xF029 => {
+                    let font_length = 5;
+                    let font_start = 0x50; // TODO: constant?
+                    self.index_register =
+                        self.memory[font_start + font_length * opcode.x as usize] as u16;
+                }
                 // Fx33 - LD B, Vx
                 0xF033 => todo!(),
                 // Fx55 - LD [I], Vx
-                0xF055 => todo!(),
+                //
+                // **AMBIGIOUS INSTRUCTION**. (I love it.)
+                0xF055 => {
+                    for i in 0..opcode.x {
+                        self.memory[i as usize] =
+                            self.registers[self.index_register as usize + i as usize];
+                    }
+                }
                 // Fx65 - LD Vx, [I]
-                0xF065 => todo!(),
+                // `
+                // **AMBIGIOUS INSTRUCTION**.
+                0xF065 => {
+                    for i in 0..opcode.x {
+                        self.registers[i as usize] =
+                            self.memory[self.index_register as usize + i as usize];
+                    }
+                }
                 _ => unimplemented!(),
             },
             _ => unimplemented!("unknown instruction"),

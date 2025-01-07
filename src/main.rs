@@ -11,7 +11,7 @@ use crate::engine::{Chip8Engine, DISPLAY_HEIGHT, DISPLAY_SIZE, DISPLAY_WIDTH};
 
 use clap::Parser;
 
-const CLOCK: u32 = 500; // Hz
+const CLOCK: u32 = 50; // Hz
 const DISPLAY_FPS: u32 = 60;
 
 #[derive(Parser, Debug)]

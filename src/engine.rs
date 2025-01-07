@@ -25,6 +25,7 @@ const FONT_SET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
 
+const VF_REGISTER: usize = 0xF;
 #[derive(Debug)]
 pub struct Chip8Engine {
     // delay_timer: u8,
@@ -97,6 +98,7 @@ impl Chip8Engine {
     // This is public for now, due to development. We'll see if I want to make this private down
     // the road.
     pub fn tick(&mut self) -> Result<(), Box<dyn Error>> {
+        println!("pc: {}", self.program_counter);
         let mut rng = rand::thread_rng();
         let code = {
             let slice = [
@@ -108,6 +110,7 @@ impl Chip8Engine {
 
             u16::from_be_bytes(slice)
         };
+        println!("code: {:#02x}", code);
 
         let opcode = Opcode {
             x: ((code & 0x0F00) >> 8) as u8,
@@ -117,8 +120,11 @@ impl Chip8Engine {
             addr: (code & 0x0FFF) as u16,
         };
 
+        // NOTE: There exists ambiguity here. Thread carefully.
+        // I'm currently using COSMAC-VIP specification.
+        // TODO(ben): confirm this is resolved once flags are added.
         match code & 0xF000 {
-            0x0000 => match code & 0x00F0 {
+            0x0000 => match code & 0x00FF {
                 // 0x00E0 - CLS
                 0x00E0 => {
                     for pixel in self.display.iter_mut() {
@@ -127,6 +133,7 @@ impl Chip8Engine {
                 }
                 // 0x00EE - RET
                 0x00EE => {
+                    println!("ooee");
                     self.program_counter = *self.stack.last().unwrap_or(&0);
                     self.stack_pointer -= 1;
                 }
@@ -168,27 +175,78 @@ impl Chip8Engine {
             0x6000 => self.registers[opcode.x as usize] = opcode.kk,
 
             // 0x7xkk - ADD Vx, byte
-            0x7000 => self.registers[opcode.x as usize] += opcode.kk,
+            0x7000 => {
+                let (sum, _) = self.registers[opcode.x as usize].overflowing_add(opcode.kk);
+                self.registers[opcode.x as usize] = sum;
+            }
 
             0x8000 => match code & 0xF00F {
                 // 8xy0 - LD Vx, Vy
-                0x8000 => todo!(),
+                0x8000 => self.registers[opcode.x as usize] = self.registers[opcode.y as usize],
                 // 8xy1 - OR Vx, Vy
-                0x8001 => todo!(),
+                0x8001 => self.registers[opcode.x as usize] |= self.registers[opcode.y as usize],
                 // 8xy2 - AND Vx, Vy
-                0x8002 => todo!(),
+                0x8002 => self.registers[opcode.x as usize] &= self.registers[opcode.y as usize],
                 // 8xy3 - XOR Vx, Vy
-                0x8003 => todo!(),
+                0x8003 => self.registers[opcode.x as usize] ^= self.registers[opcode.y as usize],
                 // 8xy4 - ADD Vx, Vy
-                0x8004 => todo!(),
+                0x8004 => {
+                    self.registers[VF_REGISTER] = 0;
+                    let vx = self.registers[opcode.x as usize];
+                    let vy = self.registers[opcode.y as usize];
+
+                    let (sum, overflow) = vx.overflowing_add(vy);
+
+                    // Overflow detection.
+                    self.registers[VF_REGISTER] = overflow as u8;
+                    self.registers[opcode.x as usize] = sum;
+                }
                 // 8xy5 - SUB Vx, Vy
-                0x8005 => todo!(),
+                0x8005 => {
+                    self.registers[VF_REGISTER] = 1;
+                    let vx = self.registers[opcode.x as usize];
+                    let vy = self.registers[opcode.y as usize];
+                    let (res, underflow) = vx.overflowing_sub(vy);
+
+                    // Underflow detection.
+                    self.registers[VF_REGISTER] = underflow as u8;
+                    self.registers[opcode.x as usize] = res;
+                }
                 // 8xy6 - SHR Vx {, Vy}
-                0x8006 => todo!(),
+                //
+                // **AMBIGIOUS INSTRUCTION**.
+                // COSMAC VIP: set Vx = Vy then shift Vx >> 1. Vf = shifted value.
+                // CHIP-48 / SuPER-CHIP: Shift Vx >> 1. Ignore Vy. Vf = shifted value.
+                0x8006 => {
+                    // TODO(ben): confirm this conforms to test suite.
+                    self.registers[opcode.x as usize] = self.registers[opcode.y as usize];
+                    // grab the value that will be shifted out.
+                    self.registers[VF_REGISTER] = self.registers[opcode.x as usize] & 1;
+                    self.registers[opcode.x as usize] >>= 1;
+                }
                 // 8xy7 - SUBN Vx, Vy
-                0x8007 => todo!(),
+                0x8007 => {
+                    self.registers[VF_REGISTER] = 1;
+                    let vx = self.registers[opcode.x as usize];
+                    let vy = self.registers[opcode.y as usize];
+                    let (res, underflow) = vy.overflowing_sub(vx);
+
+                    // Underflow detection.
+                    self.registers[VF_REGISTER] = underflow as u8;
+                    self.registers[opcode.x as usize] = res;
+                }
                 // 8xyE - SHL Vx {, Vy}
-                0x800E => todo!(),
+                //
+                // **AMBIGIOUS INSTRUCTION**.
+                // COSMAC VIP: set Vx = Vy then shift Vx >> 1.
+                // CHIP-48 / SuPER-CHIP: Shift Vx >> 1. Ignore Vy. Vf = shifted value.
+                0x800E => {
+                    // TODO(ben): confirm this conforms to test suite.
+                    self.registers[opcode.x as usize] = self.registers[opcode.y as usize];
+                    // grab the value that will be shifted out.
+                    self.registers[VF_REGISTER] = self.registers[opcode.x as usize] & 0x80;
+                    self.registers[opcode.x as usize] <<= 1;
+                }
                 _ => unimplemented!("unknown instruction"),
             },
 
@@ -202,6 +260,7 @@ impl Chip8Engine {
             // 0xAnnn - LD I, addr
             0xA000 => {
                 self.index_register = opcode.addr;
+                println!("post A000");
             }
 
             // Bnnn - JP V0, addr
@@ -234,7 +293,7 @@ impl Chip8Engine {
                 let x = (self.registers[opcode.x as usize] % DISPLAY_WIDTH as u8) as usize;
                 let y = (self.registers[opcode.y as usize] % DISPLAY_HEIGHT as u8) as usize;
 
-                self.registers[0xF] = 0;
+                self.registers[VF_REGISTER] = 0;
 
                 let start = self.index_register as usize;
 
@@ -251,7 +310,7 @@ impl Chip8Engine {
 
                         // Collision detection.
                         if *display_pixel == 1 && curr_pixel == 1 {
-                            self.registers[0xF] = 1;
+                            self.registers[VF_REGISTER] = 1;
                         }
 
                         if *display_pixel == 0 && curr_pixel == 1 {

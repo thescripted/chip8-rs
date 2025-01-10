@@ -1,10 +1,12 @@
 use rand::Rng;
 use std::error::Error;
 
-pub const DISPLAY_WIDTH: usize = 64;
-pub const DISPLAY_HEIGHT: usize = 32;
+pub const DISPLAY_WIDTH: usize = 0x40;
+pub const DISPLAY_HEIGHT: usize = 0x20;
 pub const DISPLAY_SIZE: usize = DISPLAY_WIDTH * DISPLAY_HEIGHT;
-const MEMORY_SIZE: usize = 4096;
+const MEMORY_SIZE: usize = 0x1000;
+const FONT_START: usize = 0x50;
+const VF_REGISTER: usize = 0xF;
 
 const FONT_SET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -25,7 +27,6 @@ const FONT_SET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
 
-const VF_REGISTER: usize = 0xF;
 #[derive(Debug)]
 pub struct Chip8Engine {
     // delay_timer: u8,
@@ -37,10 +38,7 @@ pub struct Chip8Engine {
     registers: [u8; 16],
     index_register: u16,
     program_counter: u16,
-
-    // TODO(ben): this is a simple approach but can be reduced from
-    // 2kb -> 256bytes with bit-packing. Maybe refactor.
-    pub display: [u8; DISPLAY_SIZE], // idk if I want this to be public or not, yet...
+    pub display: [u8; DISPLAY_SIZE],
 }
 
 #[derive(Debug)]
@@ -53,11 +51,12 @@ struct Opcode {
 }
 
 impl Chip8Engine {
+    /// Creates a new CHIP-8 Engine.
     pub fn new() -> Self {
         let mut memory = [0; MEMORY_SIZE];
 
         for (i, &font_byte) in FONT_SET.iter().enumerate() {
-            memory[0x50 + i] = font_byte;
+            memory[FONT_START + i] = font_byte;
         }
 
         Chip8Engine {
@@ -71,34 +70,14 @@ impl Chip8Engine {
         }
     }
 
-    /// loads a ROM into the CHIP-8 Engine.
-    /// for now, we don't do any sanity checks here. I don't know what sanity checks we could do to
-    /// ensure that what you provided is something that the Engine can actually run.
+    /// Loads a ROM into the CHIP-8 Engine.
     pub fn load(&mut self, source: &[u8]) {
         for (i, byte) in source.iter().enumerate() {
             self.memory[0x200 + i] = *byte;
         }
     }
 
-    // Ideally, I want this to be the main operation. But this might be harder to hook into when
-    // running in an event loop. Also, what is "run"? Does that include configuring all of the
-    // keyboard inputs, sounds, display?
-    pub fn _run() {
-        todo!(
-            "Run will handle various operations, from reading flags that user can provide.
-            These flags will primarily control what an operation might do, how fast the game
-            engine will run, debug controls, etc.
-
-            Run will also initialize various I/O devices such as keyboard control, sounds, display
-            and manage the connections with those devices efficiently."
-        );
-    }
-
-    // Tick handles the fetch/decode/execute loop for a single operation.
-    // This is public for now, due to development. We'll see if I want to make this private down
-    // the road.
-    //
-    // TODO(ben): resolve ambiguity. Some are using COSMAC-VIP and others are using common sense.
+    /// Runs the fetch/decode/execute loop for a single 16 bit instruction.
     pub fn tick(&mut self) -> Result<(), Box<dyn Error>> {
         println!("pc: {}", self.program_counter);
         let mut rng = rand::thread_rng();
@@ -122,9 +101,6 @@ impl Chip8Engine {
             addr: (code & 0x0FFF) as u16,
         };
 
-        // NOTE: There exists ambiguity here. Thread carefully.
-        // I'm currently using COSMAC-VIP specification.
-        // TODO(ben): confirm this is resolved once flags are added.
         match code & 0xF000 {
             0x0000 => match code & 0x00FF {
                 // 0x00E0 - CLS
@@ -220,9 +196,7 @@ impl Chip8Engine {
                 // COSMAC VIP: set Vx = Vy then shift Vx >> 1. Vf = shifted value.
                 // CHIP-48 / SuPER-CHIP: Shift Vx >> 1. Ignore Vy. Vf = shifted value.
                 0x8006 => {
-                    // TODO(ben): confirm this conforms to test suite.
                     self.registers[opcode.x as usize] = self.registers[opcode.y as usize];
-                    // grab the value that will be shifted out.
                     self.registers[VF_REGISTER] = self.registers[opcode.x as usize] & 1;
                     self.registers[opcode.x as usize] >>= 1;
                 }
@@ -240,12 +214,11 @@ impl Chip8Engine {
                 // 8xyE - SHL Vx {, Vy}
                 //
                 // **AMBIGIOUS INSTRUCTION**.
+                //
                 // COSMAC VIP: set Vx = Vy then shift Vx >> 1.
                 // CHIP-48 / SuPER-CHIP: Shift Vx >> 1. Ignore Vy. Vf = shifted value.
                 0x800E => {
-                    // TODO(ben): confirm this conforms to test suite.
                     self.registers[opcode.x as usize] = self.registers[opcode.y as usize];
-                    // grab the value that will be shifted out.
                     self.registers[VF_REGISTER] = self.registers[opcode.x as usize] & 0x80;
                     self.registers[opcode.x as usize] <<= 1;
                 }
@@ -349,23 +322,21 @@ impl Chip8Engine {
                 // Fx29 - LD F, Vx
                 0xF029 => {
                     let font_length = 5;
-                    let font_start = 0x50; // TODO: constant?
                     self.index_register =
-                        self.memory[font_start + font_length * opcode.x as usize] as u16;
+                        self.memory[FONT_START + font_length * opcode.x as usize] as u16;
                 }
                 // Fx33 - LD B, Vx
                 0xF033 => todo!(),
                 // Fx55 - LD [I], Vx
                 //
-                // **AMBIGIOUS INSTRUCTION**. (I love it.)
+                // **AMBIGIOUS INSTRUCTION**.
                 0xF055 => {
                     for i in 0..opcode.x {
-                        self.memory[i as usize] =
-                            self.registers[self.index_register as usize + i as usize];
+                        self.memory[i as usize] = self.registers[i as usize];
                     }
                 }
                 // Fx65 - LD Vx, [I]
-                // `
+                //
                 // **AMBIGIOUS INSTRUCTION**.
                 0xF065 => {
                     for i in 0..opcode.x {

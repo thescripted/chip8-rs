@@ -307,6 +307,8 @@ impl Chip8Engine {
                 // Fx07 - LD Vx, DT
                 0xF007 => todo!(), // TIMER
                 // Fx0A - LD Vx, K
+                //
+                // On the original COSMAC VIP, the key was only registered when it was pressed and then released.
                 0xF00A => todo!(), // GET KEY
                 // Fx15 - LD DT, Vx
                 0xF015 => todo!(), // TIMER
@@ -326,22 +328,35 @@ impl Chip8Engine {
                         self.memory[FONT_START + font_length * opcode.x as usize] as u16;
                 }
                 // Fx33 - LD B, Vx
-                0xF033 => todo!(),
+                0xF033 => {
+                    let vx = self.registers[opcode.x as usize];
+
+                    let ones = vx % 10;
+                    let tens = (vx / 10) % 10;
+                    let hundreds = (vx / 100) % 10;
+
+                    let index = self.index_register as usize;
+
+                    self.memory[index] = hundreds;
+                    self.memory[index + 1] = tens;
+                    self.memory[index + 2] = ones;
+                }
                 // Fx55 - LD [I], Vx
                 //
                 // **AMBIGIOUS INSTRUCTION**.
                 0xF055 => {
-                    for i in 0..opcode.x {
-                        self.memory[i as usize] = self.registers[i as usize];
+                    let index = self.index_register as usize;
+                    for i in 0..=opcode.x {
+                        self.memory[index + i as usize] = self.registers[i as usize];
                     }
                 }
                 // Fx65 - LD Vx, [I]
                 //
                 // **AMBIGIOUS INSTRUCTION**.
                 0xF065 => {
-                    for i in 0..opcode.x {
-                        self.registers[i as usize] =
-                            self.memory[self.index_register as usize + i as usize];
+                    let index = self.index_register as usize;
+                    for i in 0..=opcode.x {
+                        self.registers[i as usize] = self.memory[index + i as usize];
                     }
                 }
                 _ => unimplemented!(),

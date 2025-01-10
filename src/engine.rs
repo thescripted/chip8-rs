@@ -111,7 +111,6 @@ impl Chip8Engine {
                 }
                 // 0x00EE - RET
                 0x00EE => {
-                    println!("ooee");
                     self.program_counter = *self.stack.last().unwrap_or(&0);
                     self.stack_pointer -= 1;
                 }
@@ -193,6 +192,7 @@ impl Chip8Engine {
                 // 8xy6 - SHR Vx {, Vy}
                 //
                 // **AMBIGIOUS INSTRUCTION**.
+                //
                 // COSMAC VIP: set Vx = Vy then shift Vx >> 1. Vf = shifted value.
                 // CHIP-48 / SuPER-CHIP: Shift Vx >> 1. Ignore Vy. Vf = shifted value.
                 0x8006 => {
@@ -244,7 +244,6 @@ impl Chip8Engine {
             //
             // COSMAC VIP reads 0xBNNN
             // CHIP-48 and SUPER-CHIP reads 0xBXNN
-            // Later, I'll add a flag to control this quirk.
             0xB000 => {
                 self.program_counter = opcode.addr + self.registers[0] as u16;
             }
@@ -359,7 +358,7 @@ impl Chip8Engine {
                         self.registers[i as usize] = self.memory[index + i as usize];
                     }
                 }
-                _ => unimplemented!(),
+                _ => unimplemented!("unknown instruction"),
             },
             _ => unimplemented!("unknown instruction"),
         };
